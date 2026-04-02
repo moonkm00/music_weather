@@ -3,21 +3,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
-from matplotlib import font_manager, rc
-import joblib  # 저장된 모델(.pkl)을 불러오기 위한 라이브러리
+import joblib
 import os
 
-# --- 1. 한글 폰트 설정 (Windows 기준) ---
-@st.cache_resource
-def set_korean_font():
-    font_path = "C:/Windows/Fonts/malgun.ttf"
-    if os.path.exists(font_path):
-        font_name = font_manager.FontProperties(fname=font_path).get_name()
-        rc('font', family=font_name)
-    plt.rcParams['axes.unicode_minus'] = False
-
-set_korean_font()
+# --- 1. 그래프 기본 설정 (한글 폰트 미사용) ---
+plt.rcParams['axes.unicode_minus'] = False
+sns.set_theme(style="whitegrid") # 배포 시 깔끔한 디자인 적용
 
 # --- 2. 데이터 및 저장된 모델 로드 ---
 @st.cache_resource
@@ -26,7 +20,7 @@ def load_assets():
     df_spotify = pd.read_csv('dataset/spotify-2023.csv', encoding='latin-1')
     df_weather = pd.read_csv('dataset/weather_2019_2023_total.csv')
     
-    # 날짜 병합 및 로그 변환 전처리
+    # 데이터 전처리 (날짜 병합 및 로그 변환)
     df_spotify['release_date'] = pd.to_datetime(
         df_spotify['released_year'].astype(str) + '-' + 
         df_spotify['released_month'].astype(str).str.zfill(2) + '-' + 
@@ -39,29 +33,29 @@ def load_assets():
     df_merged = df_merged.dropna(subset=['streams', 'release_date'])
     df_merged['streams_log'] = np.log1p(df_merged['streams'])
     
-    # [중요] 미리 학습된 모델 파일(.pkl) 불러오기
-    try:
-        loaded_model = joblib.load('model/spotify_weather_model_final.pkl')
-    except Exception as e:
-        st.error(f"모델 파일(spotify_weather_model_final.pkl)을 찾을 수 없습니다: {e}")
-        loaded_model = None
-
+    # [수정] 그래프에 표시될 라벨만 영어로 매핑 (깨짐 방지)
     column_mapping = {
-        'streams': '스트리밍', 'bpm': '박자(BPM)', 'danceability_%': '댄스성',
-        'valence_%': '곡의밝기', 'energy_%': '에너지', 'acousticness_%': '어쿠스틱',
-        'instrumentalness_%': '악기비중', 'liveness_%': '현장감', 'speechiness_%': '가사비중',
-        '평균기온(°C)': '기온', '일강수량(mm)': '강수량', '평균 상대습도(%)': '습도', '합계 일조시간(hr)': '일조량'
+        'streams': 'Streams', 'bpm': 'BPM', 'danceability_%': 'Danceability',
+        'valence_%': 'Valence', 'energy_%': 'Energy', 'acousticness_%': 'Acousticness',
+        'instrumentalness_%': 'Instrumentalness', 'liveness_%': 'Liveness', 'speechiness_%': 'Speechiness',
+        '평균기온(°C)': 'Temp', '일강수량(mm)': 'Rain', '평균 상대습도(%)': 'Humidity', '합계 일조시간(hr)': 'Sunshine'
     }
     
     feature_cols = ['bpm', 'danceability_%', 'valence_%', 'energy_%', 'acousticness_%', 
                     'instrumentalness_%', 'liveness_%', 'speechiness_%',
                     '평균기온(°C)', '일강수량(mm)', '평균 상대습도(%)', '합계 일조시간(hr)']
     
+    # 모델 불러오기
+    try:
+        loaded_model = joblib.load('model/spotify_weather_model_final.pkl')
+    except:
+        loaded_model = None
+
     return df_merged, loaded_model, column_mapping, feature_cols
 
 df_merged, final_model, col_map, feature_list = load_assets()
 
-# --- 3. 성능 평가 데이터 준비 (R2 점수 출력용) ---
+# --- 3. 성능 평가 데이터 준비 ---
 X = df_merged[feature_list].fillna(0)
 y = df_merged['streams_log']
 from sklearn.model_selection import train_test_split
@@ -73,7 +67,7 @@ if final_model:
 else:
     y_pred, r2_val = None, 0
 
-# --- 4. 메인 UI 구성 ---
+# --- 4. 메인 UI (설명은 한글로 유지) ---
 st.title("🎵 날씨 기반 음원 흥행 예측 시스템")
 tab1, tab2, tab3 = st.tabs(["🤖 실시간 예측 서비스", "📊 모델 분석 결과", "📋 데이터 통계 및 분포"])
 
@@ -106,16 +100,15 @@ with tab1:
 
 # --- Tab 2: 모델 분석 결과 ---
 with tab2:
-    st.subheader("로드된 모델의 예측 성능 및 상관관계")
+    st.subheader("모델 예측 성능 및 상관관계")
     col_r1, col_r2 = st.columns([1, 1])
     
     with col_r1:
         st.write("#### 📈 최종 모델 결정계수 (R2 Score)")
         st.metric("랜덤 포레스트 성능", f"{r2_val:.4f}")
-        st.caption("0보다 클 경우 평균보다 우수한 예측력을 의미합니다.")
         
     with col_r2:
-        st.write("#### 🎯 실제값 vs 예측값 분포")
+        st.write("#### 🎯 Actual vs Predicted (Log)")
         if final_model:
             fig_scatter, ax_scatter = plt.subplots(figsize=(5, 4))
             ax_scatter.scatter(y_test, y_pred, alpha=0.5, color='#4682b4')
@@ -123,7 +116,8 @@ with tab2:
             st.pyplot(fig_scatter)
 
     st.divider()
-    st.write("#### 📊 변수 간 상관관계 히트맵")
+    st.write("#### 📊 상관관계 히트맵 (Feature Correlation)")
+    # 그래프에 들어가는 컬럼명을 영어로 치환하여 깨짐 방지
     corr_data = df_merged[list(col_map.keys())].rename(columns=col_map).corr()
     fig_corr, ax_corr = plt.subplots(figsize=(10, 8))
     sns.heatmap(corr_data, annot=True, fmt=".2f", cmap='coolwarm', ax=ax_corr)
@@ -131,27 +125,31 @@ with tab2:
 
 # --- Tab 3: 통계 및 분포/중요도 ---
 with tab3:
-    st.subheader("데이터 통계 및 변수 영향력 분석")
+    st.subheader("데이터 통계 및 변수 영향력")
     c1, c2, c3 = st.columns(3)
     c1.metric("데이터 규모", f"{len(df_merged)}건")
     c2.metric("분석 변수", f"{len(feature_list)}개")
     c3.metric("모델 상태", "최적화 완료" if final_model else "로드 실패")
     
-    st.write("#### 📉 변수별 데이터 분포")
-    dist_feature = st.selectbox("확인할 변수 선택", list(col_map.values())[1:])
-    eng_feature = [k for k, v in col_map.items() if v == dist_feature][0]
+    st.write("#### 📉 변수별 데이터 분포 (Distribution)")
+    # 선택 메뉴는 한글로 보여주되, 실제 데이터 접근은 영어 라벨을 사용
+    dist_feature_kor = st.selectbox("확인할 변수 선택", list(col_map.values())[1:])
+    # 선택한 한글명에 해당하는 영어 컬럼명 찾기
+    eng_feature = [k for k, v in col_map.items() if v == dist_feature_kor][0]
     
-    # 변수별 맞춤 색상 적용
-    color_map = {'기온': 'tomato', '강수량': 'lightskyblue', '습도': 'cadetblue', '일조량': 'gold', 'BPM': 'royalblue'}
     fig_dist, ax_dist = plt.subplots(figsize=(8, 4))
-    sns.histplot(df_merged[eng_feature], kde=True, color=color_map.get(dist_feature, 'teal'), ax=ax_dist)
+    sns.histplot(df_merged[eng_feature], kde=True, color='teal', ax=ax_dist)
+    ax_dist.set_xlabel(dist_feature_kor.encode('ascii', 'ignore').decode('ascii')) # 그래프 축 영어로 강제
+    ax_dist.set_xlabel(col_map[eng_feature]) # 미리 정의된 영어 라벨 사용
     st.pyplot(fig_dist)
     
     st.divider()
     st.write("#### 🏆 핵심 요인 분석 (Feature Importance)")
     if final_model:
+        # 인덱스를 영어(col_map의 값)로 설정하여 그래프 출력
         importances = pd.Series(final_model.feature_importances_, 
                                 index=[col_map.get(f, f) for f in feature_list]).sort_values()
         fig_imp, ax_imp = plt.subplots(figsize=(10, 6))
         importances.plot(kind='barh', color='skyblue', edgecolor='black', ax=ax_imp)
+        ax_imp.set_title("Top Success Drivers")
         st.pyplot(fig_imp)
