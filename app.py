@@ -23,8 +23,8 @@ set_korean_font()
 @st.cache_resource
 def load_assets():
     # 데이터 로드
-    df_spotify = pd.read_csv('spotify-2023.csv', encoding='latin-1')
-    df_weather = pd.read_csv('weather_2019_2023_total.csv')
+    df_spotify = pd.read_csv('dataset/spotify-2023.csv', encoding='latin-1')
+    df_weather = pd.read_csv('dataset/weather_2019_2023_total.csv')
     
     # 날짜 병합 및 로그 변환 전처리
     df_spotify['release_date'] = pd.to_datetime(
@@ -41,7 +41,7 @@ def load_assets():
     
     # [중요] 미리 학습된 모델 파일(.pkl) 불러오기
     try:
-        loaded_model = joblib.load('spotify_weather_model_final.pkl')
+        loaded_model = joblib.load('model/spotify_weather_model_final.pkl')
     except Exception as e:
         st.error(f"모델 파일(spotify_weather_model_final.pkl)을 찾을 수 없습니다: {e}")
         loaded_model = None
